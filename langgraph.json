@@ -1,0 +1,8 @@
+{
+  "graphs": {
+    "case_study_matcher": "src/graph.py:agent"
+  },
+  "dependencies": ["."],
+  "env": "./.env",
+  "python_version": "3.13"
+}
