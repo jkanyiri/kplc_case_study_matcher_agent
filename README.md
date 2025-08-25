@@ -5,17 +5,22 @@ An intelligent agent that helps find relevant case studies for your projects by 
 ## 🎯 What It Does
 
 The Case Study Matcher Agent:
-1. **Analyzes Project Context**: Takes your project title, problem statement, and proposed solution
-2. **Generates Smart Queries**: Uses AI to create optimized search queries for finding relevant case studies
-3. **Searches the Web**: Leverages Tavily Search to find up to 20 relevant case studies
-4. **Returns Results**: Provides you with a curated list of case studies that match your project needs
+
+1. **Takes a Message**: Receives your project idea as a single message input
+2. **Analyzes Project Context**: Processes your project description to understand the context
+3. **Generates Smart Queries**: Uses AI to create optimized search queries for finding relevant case studies
+4. **Searches the Web**: Leverages Tavily Search to find up to 20 relevant case studies
+5. **Returns Results**: Provides you with a curated list of case studies that match your project needs
 
 ## 🏗️ Architecture
 
 Built with LangGraph, the agent follows a simple but effective workflow:
+
+- **Message Input**: Receives your project details as a message
 - **Generate Query Node**: AI-powered query generation based on project context
 - **Search Case Studies Node**: Web search using Tavily Search API
 - **State Management**: Tracks project details, generated queries, and search results
+- **Result Output**: Returns the complete analysis with relevant case studies
 
 ## Prerequisites
 
@@ -39,21 +44,13 @@ LANGSMITH_API_KEY=your_langsmith_key
 # LangChain
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_PROJECT=case_study_matcher
-
-# Database (Docker Compose sets this automatically to PostgreSQL)
-# DATABASE_URI=sqlite:///./langgraph.db
-
-# Optional: Override default search parameters
-# TAVILY_MAX_RESULTS=20
 ```
 
 Notes:
+
 - `OPENAI_API_KEY` is required for the agent to generate intelligent search queries
 - `TAVILY_API_KEY` is required for web search functionality
 - `LANGSMITH_API_KEY` is optional, only needed if you want tracing to LangSmith
-- `DATABASE_URI` is automatically set by Docker Compose to PostgreSQL
-- Redis and Postgres connection strings are provided by Docker Compose
-- The agent will search for up to 20 case studies by default
 
 ---
 
@@ -75,17 +72,6 @@ Start the full stack (agent + Redis + Postgres):
 docker-compose up --build
 ```
 
-You should see logs confirming that Redis, Postgres, and the API service (`case_study_matcher`) are healthy.
-
-**Alternative**: Run just the agent container without dependencies:
-
-```bash
-docker build -t case_study_matcher .
-docker run -p 8123:8000 --env-file .env case_study_matcher
-```
-
-**Note**: The LangGraph API base image requires a `DATABASE_URI` environment variable. Docker Compose automatically sets this to PostgreSQL, but for standalone Docker you can use `DATABASE_URI=sqlite:///./langgraph.db`.
-
 ---
 
 ## 🌐 Accessing the Application
@@ -93,50 +79,130 @@ docker run -p 8123:8000 --env-file .env case_study_matcher
 - **Agent Base URL**: `http://localhost:8123`
 - **API Docs (FastAPI/Swagger)**: `http://localhost:8123/docs`
 - **LangGraph Studio (connect to local agent)**: `https://smith.langchain.com/studio/?baseUrl=http://localhost:8123`
+- **LangGraph Studio (connect to production agent)**: `https://smith.langchain.com/studio/?baseUrl=https://match-maker-agent-production.up.railway.app`
 
----
+## 🚀 Interacting with the Agent
 
-## 🔁 Exposed Services
+### JavaScript/TypeScript SDK (Recommended for Frontend)
 
-| Service               | Host Port | Container Port | Description                 |
-| --------------------- | --------- | -------------- | --------------------------- |
-| Case Study Matcher    | 8123      | 8000           | Graph API via LangGraph     |
-| PostgreSQL            | 5433      | 5432           | Persistent database         |
-| Redis                 | 6379      | 6379           | Cache / state store         |
+Install the JavaScript SDK:
 
----
-
-## 🗃️ Volumes
-
-Docker volume created for persistent Postgres data:
-
-```yaml
-volumes:
-  langgraph-data:
-    driver: local
+```bash
+npm install @langgraph-js/sdk
+# or
+yarn add @langgraph-js/sdk
 ```
 
----
+**Basic Example:**
 
-## ✅ Healthchecks
+```javascript
+import { getClient } from "@langgraph-js/sdk";
 
-Docker Compose waits for `redis` and `postgres` to be healthy before starting the agent:
+const client = getClient({ url: "http://localhost:8123" });
 
-- Redis: `redis-cli ping`
-- Postgres: `pg_isready -U postgres`
+async function findCaseStudies(projectIdea) {
+  try {
+    // Create a new thread
+    const thread = await client.threads.create();
+    const threadId = thread.thread_id;
 
+    const assistantId = "case_study_matcher";
 
----
+    // Stream the run to get results
+    const stream = client.runs.stream(
+      threadId,
+      assistantId,
+      {
+        input: {
+          project_idea: projectIdea,
+        },
+      },
+      { stream_mode: "updates" }
+    );
 
-## 🚀 Interacting via SDK
+    for await (const event of stream) {
+      console.log("Event:", event);
 
-Install the SDK locally and connect to the running agent:
+      // Check if we have results
+      if (event.type === "end" && event.data?.outputs?.case_studies) {
+        return event.data.outputs.case_studies;
+      }
+    }
+  } catch (error) {
+    console.error("Error finding case studies:", error);
+    throw error;
+  }
+}
+
+// Usage
+findCaseStudies("Build a real-time chat application with WebSocket")
+  .then((caseStudies) => {
+    console.log("Found case studies:", caseStudies);
+  })
+  .catch((error) => {
+    console.error("Failed to find case studies:", error);
+  });
+```
+
+**React Hook Example:**
+
+```javascript
+import { useState, useEffect } from "react";
+import { getClient } from "@langgraph-js/sdk";
+
+const client = getClient({ url: "http://localhost:8123" });
+
+export function useCaseStudyMatcher() {
+  const [loading, setLoading] = useState(false);
+  const [caseStudies, setCaseStudies] = useState([]);
+  const [error, setError] = useState(null);
+
+  const findCaseStudies = async (projectIdea) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const thread = await client.threads.create();
+      const threadId = thread.thread_id;
+      const assistantId = "case_study_matcher";
+
+      const stream = client.runs.stream(
+        threadId,
+        assistantId,
+        {
+          input: {
+            project_idea: projectIdea,
+          },
+        },
+        { stream_mode: "updates" }
+      );
+
+      for await (const event of stream) {
+        if (event.type === "end" && event.data?.outputs?.case_studies) {
+          setCaseStudies(event.data.outputs.case_studies);
+          break;
+        }
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { findCaseStudies, caseStudies, loading, error };
+}
+```
+
+### Python SDK
+
+Install the Python SDK locally and connect to the running agent:
 
 ```bash
 pip install langgraph-sdk
 ```
 
-Example (async):
+**Basic Example:**
 
 ```python
 from langgraph_sdk import get_client
@@ -149,18 +215,13 @@ thread_id = thread["thread_id"]
 
 assistant_id = "case_study_matcher"
 
-# Input with project details
-message_input = {
-    "project_title": "Solar Power for Rural Communities",
-    "problem_statement": "Lack of reliable electricity in rural African villages",
-    "proposed_solution": "Implement solar microgrids with battery storage"
-}
-
-# Stream a run
+# Stream the run to get results
 async for event in client.runs.stream(
     thread_id,
     assistant_id,
-    input=message_input,
+    input={
+    "project_idea": "project idea details"
+},
     stream_mode="updates",
 ):
     print(event)
@@ -168,69 +229,46 @@ async for event in client.runs.stream(
 
 ---
 
-## 🔧 Local Development
+## 📊 Response Structure
 
-For local development without Docker:
+Both SDKs return results with the following structure:
 
-```bash
-# Install dependencies
-uv sync
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys
-
-# Run the agent locally
-langgraph dev
-```
-
----
-
-
-## 📊 Input Schema
-
-The agent expects the following structured input:
-
-```python
+```json
 {
-    "project_title": str,        # Your project's title
-    "problem_statement": str,    # Description of the problem you're solving
-    "proposed_solution": str,    # Your proposed solution approach
-    "query": str,               # Generated search query (auto-generated)
-    "case_studies": list[str]   # Retrieved case studies (auto-populated)
+  "case_studies": [
+    {
+      "title": "Case Study Title",
+      "url": "https://example.com/case-study",
+      "content": "Brief description or content snippet",
+      "score": 0.95,
+      "raw_content": "Raw content if available"
+    }
+  ]
 }
 ```
 
----
+### Response Fields Explained
 
-## 🎯 Use Cases
-
-Perfect for:
-- **Consultants** looking for relevant case studies to support proposals
-- **Researchers** seeking examples of similar projects
-- **Project Managers** wanting to learn from past implementations
-- **Students** working on case study analysis assignments
-- **Startups** researching market validation examples
+- **`case_studies`**: Array of relevant case studies found
+- **`title`**: Title of the case study
+- **`url`**: Direct link to the case study
+- **`content`**: Brief description or content snippet
+- **`score`**: Relevance score from search engine (0-1, higher is better)
+- **`raw_content`**: Raw content if available (may be null)
 
 ---
 
-## Troubleshooting
+## 🔧 Frontend Integration Tips
 
-- **Database URI Error**: If you see `KeyError: "Config 'DATABASE_URI' is missing"`, Docker Compose should set this automatically. For standalone Docker, use `DATABASE_URI=sqlite:///./langgraph.db`
-- **Search API Errors**: Verify your `TAVILY_API_KEY` is valid and has sufficient credits
-- **OpenAI Errors**: Check your `OPENAI_API_KEY` and ensure you have GPT-4 access
-- **Port Conflicts**: If `8123` is occupied, change the host mapping in `docker-compose.yml` under the `ports:` section
-- **LangSmith Issues**: Verify both `LANGSMITH_API_KEY` and `LANGCHAIN_TRACING_V2=true` are set in `.env`
-- **Docker Issues**: Ensure Docker and Docker Compose are running and you have sufficient disk space
+1. **Error Handling**: Always wrap API calls in try-catch blocks
+2. **Loading States**: Use the streaming nature to show real-time progress
+3. **Caching**: Consider caching results for similar project ideas
+4. **Rate Limiting**: Implement appropriate delays between requests
+5. **User Experience**: Show partial results as they come in via streaming
 
----
+## 📚 Additional Resources
 
-## 🤝 Contributing
-
-This agent is built with:
-- **LangGraph**: For workflow orchestration
-- **LangChain**: For LLM integration and structured output
-- **Tavily Search**: For web search capabilities
-- **FastAPI**: For the REST API interface
-
-Feel free to extend the agent with additional search sources, filtering capabilities, or enhanced query generation logic!
+- [LangGraph JavaScript SDK](https://www.npmjs.com/package/@langgraph-js/sdk)
+- [LangGraph Python SDK](https://python.langchain.com/docs/langgraph)
+- [LangGraph Studio](https://smith.langchain.com/)
+- [API Documentation](http://localhost:8123/docs) (when running locally)
