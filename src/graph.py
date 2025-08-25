@@ -1,23 +1,32 @@
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import MessagesState
 from src.prompt import AGENT_PROMPT
 from langchain.chat_models import init_chat_model
 from src.schema import CaseStudySearchQuery
 from langchain_tavily import TavilySearch
+from typing import TypedDict
 
 
 llm = init_chat_model(model="gpt-4", temperature=0.0)
 
 
-class AgentState(MessagesState):
+class AgentState(TypedDict):
+    project_idea: str
     query: str
+    case_studies: list[str]
+
+
+class InputState(TypedDict):
+    project_idea: str
+
+
+class OutputState(TypedDict):
     case_studies: list[str]
 
 
 def generate_query(state: AgentState) -> str:
     """Node to generate a query to search for case studies"""
 
-    project_details = state["messages"][-1].content
+    project_details = state["project_idea"]
 
     system_instruction = AGENT_PROMPT.format(
         project_details=project_details,
@@ -53,7 +62,9 @@ def search_case_studies(state: AgentState) -> str:
     }
 
 
-graph_builder = StateGraph(AgentState)
+graph_builder = StateGraph(
+    AgentState, input_schema=InputState, output_schema=OutputState
+)
 
 graph_builder.add_node("generate_query", generate_query)
 graph_builder.add_node("search_case_studies", search_case_studies)
