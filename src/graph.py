@@ -1,9 +1,18 @@
+import os
+
+from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
 from src.prompt import AGENT_PROMPT
 from langchain.chat_models import init_chat_model
 from src.schema import CaseStudySearchQuery
 from langchain_tavily import TavilySearch
 from typing import TypedDict
+
+
+load_dotenv()
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+if not TAVILY_API_KEY:
+    raise RuntimeError("TAVILY_API_KEY is missing. Please set it in your .env file.")
 
 
 llm = init_chat_model(model="gpt-4", temperature=0.0)
@@ -54,11 +63,11 @@ def generate_query(state: AgentState) -> str:
 def search_case_studies(state: AgentState) -> str:
 
     query = state["query"]
-    tavily_search = TavilySearch(max_results=20)
+    tavily_search = TavilySearch(api_key=TAVILY_API_KEY, max_results=20)
     results = tavily_search.invoke(query)
 
     return {
-        "case_studies": results["results"],
+        "case_studies": results,
     }
 
 
